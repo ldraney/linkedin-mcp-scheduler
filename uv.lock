@@ -420,6 +420,7 @@ name = "linkedin-mcp-scheduler"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "keyring" },
     { name = "ldraney-linkedin-sdk" },
     { name = "mcp" },
@@ -433,6 +434,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.24" },
     { name = "keyring", specifier = ">=25.0" },
     { name = "ldraney-linkedin-sdk", specifier = ">=0.1.0" },
     { name = "mcp", specifier = ">=1.0" },

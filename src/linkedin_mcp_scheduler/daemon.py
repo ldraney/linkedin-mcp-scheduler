@@ -12,8 +12,6 @@ from linkedin_sdk import LinkedInClient
 from .db import get_db
 from .token_storage import get_credentials
 
-POLL_INTERVAL_SECONDS = int(os.environ.get("POLL_INTERVAL_SECONDS", "60"))
-
 _shutdown = False
 
 
@@ -46,14 +44,17 @@ def run_once() -> None:
     client = _get_client()
     for post in due:
         try:
-            kwargs: dict = {
-                "commentary": post["commentary"],
-                "visibility": post["visibility"],
-            }
             if post.get("url"):
-                kwargs["article_url"] = post["url"]
-
-            result = client.create_post(**kwargs)
+                result = client.create_post_with_link(
+                    commentary=post["commentary"],
+                    url=post["url"],
+                    visibility=post["visibility"],
+                )
+            else:
+                result = client.create_post(
+                    commentary=post["commentary"],
+                    visibility=post["visibility"],
+                )
             post_urn = result.get("postUrn", result.get("id", "unknown"))
             db.mark_published(post["id"], post_urn)
             print(f"Published: {post['id']} -> {post_urn}")
@@ -68,10 +69,12 @@ def main() -> None:
     Runs run_once() in a loop with configurable poll interval.
     Shuts down gracefully on SIGINT or SIGTERM.
     """
+    poll_interval = int(os.environ.get("POLL_INTERVAL_SECONDS", "60"))
+
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    print(f"Publisher daemon started (poll interval: {POLL_INTERVAL_SECONDS}s)")
+    print(f"Publisher daemon started (poll interval: {poll_interval}s)")
 
     while not _shutdown:
         try:
@@ -80,7 +83,7 @@ def main() -> None:
             print(f"Error in run_once: {e}", file=sys.stderr)
 
         # Sleep in small increments so we can react to shutdown quickly
-        for _ in range(POLL_INTERVAL_SECONDS):
+        for _ in range(poll_interval):
             if _shutdown:
                 break
             time.sleep(1)

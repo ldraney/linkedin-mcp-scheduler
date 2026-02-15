@@ -35,6 +35,7 @@ class ScheduledPostsDB:
 
     def __init__(self, db_path: str = DB_PATH):
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        self._db_path = db_path
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(_SCHEMA)
@@ -92,6 +93,9 @@ class ScheduledPostsDB:
     # -- Status transitions ---------------------------------------------------
 
     def mark_published(self, post_id: str, post_urn: str) -> dict[str, Any] | None:
+        row = self.get(post_id)
+        if not row or row["status"] != "pending":
+            return None
         now = datetime.now(timezone.utc).isoformat()
         self._conn.execute(
             "UPDATE scheduled_posts SET status = 'published', published_at = ?, post_urn = ? WHERE id = ?",
@@ -101,6 +105,9 @@ class ScheduledPostsDB:
         return self.get(post_id)
 
     def mark_failed(self, post_id: str, error_message: str) -> dict[str, Any] | None:
+        row = self.get(post_id)
+        if not row or row["status"] != "pending":
+            return None
         self._conn.execute(
             "UPDATE scheduled_posts SET status = 'failed', error_message = ?, retry_count = retry_count + 1 WHERE id = ?",
             (error_message, post_id),
@@ -222,10 +229,18 @@ _db: ScheduledPostsDB | None = None
 
 
 def get_db(db_path: str | None = None) -> ScheduledPostsDB:
-    """Return the singleton DB instance, creating it on first call."""
+    """Return the singleton DB instance, creating it on first call.
+
+    If called with a different db_path than the existing singleton, the old
+    connection is closed and a new one is created at the requested path.
+    """
     global _db
+    resolved = db_path or DB_PATH
+    if _db is not None and _db._db_path != resolved:
+        _db.close()
+        _db = None
     if _db is None:
-        _db = ScheduledPostsDB(db_path or DB_PATH)
+        _db = ScheduledPostsDB(resolved)
     return _db
 
 

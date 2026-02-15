@@ -179,6 +179,8 @@ class TestMarkFailed:
     def test_mark_failed_increments_retry(self, db):
         post = db.add("Post", PAST_TIME)
         db.mark_failed(post["id"], "Error 1")
+        # Retry resets status to pending so mark_failed can be called again
+        db.retry(post["id"])
         result = db.mark_failed(post["id"], "Error 2")
         assert result["retry_count"] == 2
 
