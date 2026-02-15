@@ -32,3 +32,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests that hit real LinkedIn API (deselect with '-m \"not integration\"')",
+]
+addopts = "-m 'not integration'"
