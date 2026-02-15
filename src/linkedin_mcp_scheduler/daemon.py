@@ -10,7 +10,6 @@ import time
 from linkedin_sdk import LinkedInClient
 
 from .db import get_db
-from .token_storage import get_credentials
 
 _shutdown = False
 
@@ -22,15 +21,10 @@ def _handle_signal(signum: int, frame: object) -> None:
     print(f"\nReceived signal {signum}, shutting down gracefully...")
 
 
-def _get_client() -> LinkedInClient:
+def _build_client() -> LinkedInClient:
     """Build a LinkedInClient from keychain or env vars."""
-    creds = get_credentials()
-    if creds:
-        return LinkedInClient(
-            access_token=creds.get("accessToken"),
-            person_id=creds.get("personId"),
-        )
-    return LinkedInClient()
+    from .token_storage import build_linkedin_client
+    return build_linkedin_client()
 
 
 def run_once() -> None:
@@ -41,7 +35,7 @@ def run_once() -> None:
     if not due:
         return
 
-    client = _get_client()
+    client = _build_client()
     for post in due:
         try:
             if post.get("url"):
@@ -69,6 +63,9 @@ def main() -> None:
     Runs run_once() in a loop with configurable poll interval.
     Shuts down gracefully on SIGINT or SIGTERM.
     """
+    global _shutdown
+    _shutdown = False
+
     poll_interval = int(os.environ.get("POLL_INTERVAL_SECONDS", "60"))
 
     signal.signal(signal.SIGINT, _handle_signal)
