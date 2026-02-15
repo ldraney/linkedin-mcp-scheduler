@@ -1,4 +1,8 @@
-"""Tests for scheduling tool functions — validates JSON output and input validation."""
+"""Tests for scheduling tool functions — validates JSON output and input validation.
+
+These tests call real tool functions that hit a real SQLite temp DB.
+No mocks. The full path is: tool function -> db.py -> SQLite.
+"""
 
 from __future__ import annotations
 
@@ -28,6 +32,8 @@ def _use_temp_db(tmp_path, monkeypatch):
 
 FUTURE_TIME = "2099-12-31T23:59:59Z"
 FUTURE_TIME_NORMALIZED = "2099-12-31T23:59:59+00:00"
+FUTURE_TIME_2 = "2099-06-15T10:00:00Z"
+FUTURE_TIME_2_NORMALIZED = "2099-06-15T10:00:00+00:00"
 PAST_TIME = "2000-01-01T00:00:00Z"
 
 
@@ -62,6 +68,28 @@ class TestSchedulePost:
             result = json.loads(schedule_post(f"Post {vis}", FUTURE_TIME, visibility=vis))
             assert "postId" in result, f"Failed for visibility={vis}"
 
+    def test_schedule_with_all_params(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, get_scheduled_post
+        result = json.loads(schedule_post(
+            "Full params", FUTURE_TIME,
+            url="https://example.com",
+            visibility="CONNECTIONS",
+        ))
+        post = json.loads(get_scheduled_post(result["postId"]))["post"]
+        assert post["commentary"] == "Full params"
+        assert post["url"] == "https://example.com"
+        assert post["visibility"] == "CONNECTIONS"
+        assert post["scheduled_time"] == FUTURE_TIME_NORMALIZED
+
+    def test_schedule_persists_to_db(self):
+        """Verify the tool actually wrote to the DB, not just returned JSON."""
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post
+        result = json.loads(schedule_post("Persisted?", FUTURE_TIME))
+        db = get_db()
+        row = db.get(result["postId"])
+        assert row is not None
+        assert row["commentary"] == "Persisted?"
+
 
 class TestListScheduledPosts:
     def test_list_returns_valid_json(self):
@@ -82,6 +110,19 @@ class TestListScheduledPosts:
 
         cancelled = json.loads(list_scheduled_posts(status="cancelled"))
         assert cancelled["count"] == 1
+
+    def test_list_empty(self):
+        from linkedin_mcp_scheduler.tools.scheduling import list_scheduled_posts
+        result = json.loads(list_scheduled_posts())
+        assert result["count"] == 0
+        assert result["posts"] == []
+
+    def test_list_respects_limit(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, list_scheduled_posts
+        for i in range(5):
+            schedule_post(f"Post {i}", FUTURE_TIME)
+        result = json.loads(list_scheduled_posts(limit=3))
+        assert result["count"] == 3
 
 
 class TestGetScheduledPost:
@@ -110,6 +151,23 @@ class TestCancelScheduledPost:
         result = json.loads(cancel_scheduled_post("nonexistent"))
         assert result["error"] is True
 
+    def test_cancel_already_cancelled(self):
+        """Cancelling an already-cancelled post should fail."""
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, cancel_scheduled_post
+        created = json.loads(schedule_post("Cancel me", FUTURE_TIME))
+        cancel_scheduled_post(created["postId"])
+        result = json.loads(cancel_scheduled_post(created["postId"]))
+        assert result["error"] is True
+
+    def test_cancel_actually_changes_db_state(self):
+        """Verify the DB row is actually updated, not just the response."""
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, cancel_scheduled_post
+        created = json.loads(schedule_post("Cancel me", FUTURE_TIME))
+        cancel_scheduled_post(created["postId"])
+        db = get_db()
+        row = db.get(created["postId"])
+        assert row["status"] == "cancelled"
+
 
 class TestUpdateScheduledPost:
     def test_update_commentary(self):
@@ -118,6 +176,31 @@ class TestUpdateScheduledPost:
         result = json.loads(update_scheduled_post(created["postId"], commentary="Updated"))
         assert result["success"] is True
         assert result["post"]["commentary"] == "Updated"
+
+    def test_update_url(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, update_scheduled_post
+        created = json.loads(schedule_post("Post", FUTURE_TIME))
+        result = json.loads(update_scheduled_post(created["postId"], url="https://new.com"))
+        assert result["post"]["url"] == "https://new.com"
+
+    def test_update_visibility(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, update_scheduled_post
+        created = json.loads(schedule_post("Post", FUTURE_TIME))
+        result = json.loads(update_scheduled_post(created["postId"], visibility="CONNECTIONS"))
+        assert result["post"]["visibility"] == "CONNECTIONS"
+
+    def test_update_multiple_fields(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, update_scheduled_post
+        created = json.loads(schedule_post("Post", FUTURE_TIME))
+        result = json.loads(update_scheduled_post(
+            created["postId"],
+            commentary="New text",
+            url="https://x.com",
+            visibility="CONNECTIONS",
+        ))
+        assert result["post"]["commentary"] == "New text"
+        assert result["post"]["url"] == "https://x.com"
+        assert result["post"]["visibility"] == "CONNECTIONS"
 
     def test_update_nonexistent(self):
         from linkedin_mcp_scheduler.tools.scheduling import update_scheduled_post
@@ -131,16 +214,22 @@ class TestUpdateScheduledPost:
         assert result["error"] is True
         assert "Invalid visibility" in result["message"]
 
+    def test_update_cancelled_post_fails(self):
+        """Can't update a post that's already cancelled."""
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, cancel_scheduled_post, update_scheduled_post
+        created = json.loads(schedule_post("Post", FUTURE_TIME))
+        cancel_scheduled_post(created["postId"])
+        result = json.loads(update_scheduled_post(created["postId"], commentary="Nope"))
+        assert result["error"] is True
+
 
 class TestReschedulePost:
     def test_reschedule_valid(self):
         from linkedin_mcp_scheduler.tools.scheduling import schedule_post, reschedule_post
         created = json.loads(schedule_post("Post", FUTURE_TIME))
-        new_time = "2099-06-15T10:00:00Z"
-        new_time_normalized = "2099-06-15T10:00:00+00:00"
-        result = json.loads(reschedule_post(created["postId"], new_time))
+        result = json.loads(reschedule_post(created["postId"], FUTURE_TIME_2))
         assert result["success"] is True
-        assert result["post"]["scheduled_time"] == new_time_normalized
+        assert result["post"]["scheduled_time"] == FUTURE_TIME_2_NORMALIZED
 
     def test_reschedule_rejects_past_time(self):
         from linkedin_mcp_scheduler.tools.scheduling import schedule_post, reschedule_post
@@ -148,6 +237,19 @@ class TestReschedulePost:
         result = json.loads(reschedule_post(created["postId"], PAST_TIME))
         assert result["error"] is True
         assert "future" in result["message"]
+
+    def test_reschedule_cancelled_post_fails(self):
+        """Can't reschedule a cancelled post."""
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, cancel_scheduled_post, reschedule_post
+        created = json.loads(schedule_post("Post", FUTURE_TIME))
+        cancel_scheduled_post(created["postId"])
+        result = json.loads(reschedule_post(created["postId"], FUTURE_TIME_2))
+        assert result["error"] is True
+
+    def test_reschedule_nonexistent(self):
+        from linkedin_mcp_scheduler.tools.scheduling import reschedule_post
+        result = json.loads(reschedule_post("nonexistent", FUTURE_TIME_2))
+        assert result["error"] is True
 
 
 class TestRetryFailedPost:
@@ -168,6 +270,49 @@ class TestRetryFailedPost:
         result = json.loads(retry_failed_post(created["postId"]))
         assert result["error"] is True
 
+    def test_retry_with_custom_time(self):
+        from linkedin_mcp_scheduler.tools.scheduling import retry_failed_post
+        db = get_db()
+        post = db.add("Failed post", PAST_TIME)
+        db.mark_failed(post["id"], "API error")
+
+        result = json.loads(retry_failed_post(post["id"], scheduled_time=FUTURE_TIME))
+        assert result["post"]["scheduled_time"] == FUTURE_TIME_NORMALIZED
+
+    def test_retry_without_time_defaults_to_near_future(self):
+        """When no scheduled_time is given, retry should default to ~5 minutes from now."""
+        from datetime import datetime, timedelta, timezone
+        from linkedin_mcp_scheduler.tools.scheduling import retry_failed_post
+        db = get_db()
+        post = db.add("Failed post", PAST_TIME)
+        db.mark_failed(post["id"], "API error")
+
+        before = datetime.now(timezone.utc)
+        result = json.loads(retry_failed_post(post["id"]))
+        after = datetime.now(timezone.utc)
+
+        new_time = datetime.fromisoformat(result["post"]["scheduled_time"])
+        # Should be roughly 5 minutes from now (within 10 seconds tolerance)
+        assert new_time >= before + timedelta(minutes=4, seconds=50)
+        assert new_time <= after + timedelta(minutes=5, seconds=10)
+
+    def test_retry_clears_error_message(self):
+        from linkedin_mcp_scheduler.tools.scheduling import retry_failed_post
+        db = get_db()
+        post = db.add("Failed post", PAST_TIME)
+        db.mark_failed(post["id"], "API error")
+
+        result = json.loads(retry_failed_post(post["id"], scheduled_time=FUTURE_TIME))
+        assert result["post"]["error_message"] is None
+
+    def test_retry_cancelled_post_fails(self):
+        """Can't retry a cancelled post -- only failed posts."""
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, cancel_scheduled_post, retry_failed_post
+        created = json.loads(schedule_post("Post", FUTURE_TIME))
+        cancel_scheduled_post(created["postId"])
+        result = json.loads(retry_failed_post(created["postId"]))
+        assert result["error"] is True
+
 
 class TestQueueSummary:
     def test_empty_summary(self):
@@ -184,6 +329,25 @@ class TestQueueSummary:
         result = json.loads(queue_summary())
         assert result["counts"]["pending"] == 2
         assert result["next_due"] is not None
+
+    def test_summary_after_full_lifecycle(self):
+        """Schedule, cancel one, fail another, verify summary counts."""
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, cancel_scheduled_post, queue_summary
+        p1 = json.loads(schedule_post("Will cancel", FUTURE_TIME))
+        schedule_post("Still pending", FUTURE_TIME)
+
+        cancel_scheduled_post(p1["postId"])
+
+        db = get_db()
+        p3 = db.add("Will fail", PAST_TIME)
+        db.mark_failed(p3["id"], "error")
+
+        result = json.loads(queue_summary())
+        assert result["counts"]["pending"] == 1
+        assert result["counts"]["cancelled"] == 1
+        assert result["counts"]["failed"] == 1
+        assert result["recent_failure"] is not None
+        assert result["recent_failure"]["error_message"] == "error"
 
 
 class TestISOTimeNormalization:
