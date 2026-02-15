@@ -27,6 +27,7 @@ def _use_temp_db(tmp_path, monkeypatch):
 
 
 FUTURE_TIME = "2099-12-31T23:59:59Z"
+FUTURE_TIME_NORMALIZED = "2099-12-31T23:59:59+00:00"
 PAST_TIME = "2000-01-01T00:00:00Z"
 
 
@@ -36,7 +37,7 @@ class TestSchedulePost:
         result = json.loads(schedule_post("Hello!", FUTURE_TIME))
         assert "postId" in result
         assert result["status"] == "pending"
-        assert result["scheduledTime"] == FUTURE_TIME
+        assert result["scheduledTime"] == FUTURE_TIME_NORMALIZED
 
     def test_schedule_rejects_past_time(self):
         from linkedin_mcp_scheduler.tools.scheduling import schedule_post
@@ -117,9 +118,10 @@ class TestReschedulePost:
         from linkedin_mcp_scheduler.tools.scheduling import schedule_post, reschedule_post
         created = json.loads(schedule_post("Post", FUTURE_TIME))
         new_time = "2099-06-15T10:00:00Z"
+        new_time_normalized = "2099-06-15T10:00:00+00:00"
         result = json.loads(reschedule_post(created["postId"], new_time))
         assert result["success"] is True
-        assert result["post"]["scheduled_time"] == new_time
+        assert result["post"]["scheduled_time"] == new_time_normalized
 
     def test_reschedule_rejects_past_time(self):
         from linkedin_mcp_scheduler.tools.scheduling import schedule_post, reschedule_post
@@ -163,3 +165,35 @@ class TestQueueSummary:
         result = json.loads(queue_summary())
         assert result["counts"]["pending"] == 2
         assert result["next_due"] is not None
+
+
+class TestISOTimeNormalization:
+    """Verify that Z-suffixed times are normalized to +00:00 throughout the tools layer."""
+
+    def test_schedule_post_normalizes_z_suffix(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, get_scheduled_post
+        result = json.loads(schedule_post("Z test", "2099-07-01T12:00:00Z"))
+        assert result["scheduledTime"] == "2099-07-01T12:00:00+00:00"
+        # Verify the stored value in the DB matches
+        post = json.loads(get_scheduled_post(result["postId"]))
+        assert post["post"]["scheduled_time"] == "2099-07-01T12:00:00+00:00"
+
+    def test_reschedule_normalizes_z_suffix(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, reschedule_post
+        created = json.loads(schedule_post("Reschedule Z", FUTURE_TIME))
+        result = json.loads(reschedule_post(created["postId"], "2099-08-01T09:00:00Z"))
+        assert result["post"]["scheduled_time"] == "2099-08-01T09:00:00+00:00"
+
+    def test_retry_normalizes_z_suffix(self):
+        from linkedin_mcp_scheduler.tools.scheduling import retry_failed_post
+        db = get_db()
+        post = db.add("Retry Z", PAST_TIME)
+        db.mark_failed(post["id"], "error")
+
+        result = json.loads(retry_failed_post(post["id"], scheduled_time="2099-09-01T15:00:00Z"))
+        assert result["post"]["scheduled_time"] == "2099-09-01T15:00:00+00:00"
+
+    def test_plus_offset_times_pass_through_unchanged(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post
+        result = json.loads(schedule_post("Offset test", "2099-10-01T08:00:00+00:00"))
+        assert result["scheduledTime"] == "2099-10-01T08:00:00+00:00"

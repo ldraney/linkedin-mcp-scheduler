@@ -12,6 +12,11 @@ from ..server import mcp, _error_response
 from ..db import get_db
 
 
+def _parse_iso_time(value: str) -> datetime:
+    """Parse an ISO 8601 string, normalizing 'Z' suffix to '+00:00'."""
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 @mcp.tool()
 def schedule_post(
     commentary: Annotated[str, Field(description="Post text content (max 3000 characters).")],
@@ -25,14 +30,15 @@ def schedule_post(
     when the scheduled time arrives. Run the daemon with `linkedin-mcp-scheduler-daemon`.
     """
     try:
-        scheduled_dt = datetime.fromisoformat(scheduled_time.replace("Z", "+00:00"))
+        scheduled_dt = _parse_iso_time(scheduled_time)
         if scheduled_dt <= datetime.now(timezone.utc):
             return json.dumps({"error": True, "message": "scheduled_time must be in the future"})
 
+        normalized_time = scheduled_dt.isoformat()
         db = get_db()
         post = db.add(
             commentary=commentary,
-            scheduled_time=scheduled_time,
+            scheduled_time=normalized_time,
             url=url,
             visibility=visibility,
         )
@@ -40,7 +46,7 @@ def schedule_post(
             "postId": post["id"],
             "scheduledTime": post["scheduled_time"],
             "status": post["status"],
-            "message": f"Post scheduled for {scheduled_time}",
+            "message": f"Post scheduled for {normalized_time}",
         }, indent=2)
     except Exception as exc:
         return _error_response(exc)
@@ -136,17 +142,18 @@ def reschedule_post(
 ) -> str:
     """Change the scheduled time of a pending post."""
     try:
-        scheduled_dt = datetime.fromisoformat(scheduled_time.replace("Z", "+00:00"))
+        scheduled_dt = _parse_iso_time(scheduled_time)
         if scheduled_dt <= datetime.now(timezone.utc):
             return json.dumps({"error": True, "message": "scheduled_time must be in the future"})
 
+        normalized_time = scheduled_dt.isoformat()
         db = get_db()
-        result = db.reschedule(post_id, scheduled_time)
+        result = db.reschedule(post_id, normalized_time)
         if not result:
             return json.dumps({"error": True, "message": f"Post not found or not in pending status: {post_id}"})
         return json.dumps({
             "post": result,
-            "message": f"Post rescheduled to {scheduled_time}",
+            "message": f"Post rescheduled to {normalized_time}",
             "success": True,
         }, indent=2)
     except Exception as exc:
@@ -160,13 +167,15 @@ def retry_failed_post(
 ) -> str:
     """Reset a failed post to pending so it will be retried by the daemon."""
     try:
+        normalized_time = None
         if scheduled_time:
-            scheduled_dt = datetime.fromisoformat(scheduled_time.replace("Z", "+00:00"))
+            scheduled_dt = _parse_iso_time(scheduled_time)
             if scheduled_dt <= datetime.now(timezone.utc):
                 return json.dumps({"error": True, "message": "scheduled_time must be in the future"})
+            normalized_time = scheduled_dt.isoformat()
 
         db = get_db()
-        result = db.retry(post_id, scheduled_time=scheduled_time)
+        result = db.retry(post_id, scheduled_time=normalized_time)
         if not result:
             return json.dumps({"error": True, "message": f"Post not found or not in failed status: {post_id}"})
         return json.dumps({

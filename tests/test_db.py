@@ -18,6 +18,7 @@ def db(tmp_path):
 
 
 FUTURE_TIME = "2099-12-31T23:59:59+00:00"
+FUTURE_TIME_Z = "2099-12-31T23:59:59Z"
 PAST_TIME = "2000-01-01T00:00:00+00:00"
 
 
@@ -35,6 +36,13 @@ class TestAdd:
         post = db.add("Check this out", FUTURE_TIME, url="https://example.com", visibility="CONNECTIONS")
         assert post["url"] == "https://example.com"
         assert post["visibility"] == "CONNECTIONS"
+
+    def test_add_normalizes_z_suffix_to_plus_offset(self, db):
+        """Times stored with Z suffix should be normalized to +00:00 in the DB."""
+        post = db.add("Z-suffix post", FUTURE_TIME_Z)
+        assert post["scheduled_time"] == FUTURE_TIME
+        assert post["scheduled_time"].endswith("+00:00")
+        assert "Z" not in post["scheduled_time"]
 
 
 class TestGet:

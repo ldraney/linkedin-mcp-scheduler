@@ -43,6 +43,11 @@ class ScheduledPostsDB:
 
     # -- Core CRUD -----------------------------------------------------------
 
+    @staticmethod
+    def _normalize_iso_time(value: str) -> str:
+        """Normalize an ISO 8601 string so 'Z' becomes '+00:00'."""
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).isoformat()
+
     def add(
         self,
         commentary: str,
@@ -52,11 +57,12 @@ class ScheduledPostsDB:
     ) -> dict[str, Any]:
         post_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
+        normalized_time = self._normalize_iso_time(scheduled_time)
         self._conn.execute(
             """INSERT INTO scheduled_posts
                (id, commentary, url, visibility, scheduled_time, status, created_at, retry_count)
                VALUES (?, ?, ?, ?, ?, 'pending', ?, 0)""",
-            (post_id, commentary, url, visibility, scheduled_time, created_at),
+            (post_id, commentary, url, visibility, normalized_time, created_at),
         )
         self._conn.commit()
         return self.get(post_id)  # type: ignore[return-value]
