@@ -11,10 +11,19 @@ from pydantic import Field
 from ..server import mcp, _error_response
 from ..db import get_db
 
+_VALID_VISIBILITIES = {"PUBLIC", "CONNECTIONS", "LOGGED_IN", "CONTAINER"}
+
 
 def _parse_iso_time(value: str) -> datetime:
     """Parse an ISO 8601 string, normalizing 'Z' suffix to '+00:00'."""
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _validate_visibility(visibility: str) -> str | None:
+    """Return an error message if visibility is invalid, else None."""
+    if visibility not in _VALID_VISIBILITIES:
+        return f"Invalid visibility '{visibility}'. Must be one of: {', '.join(sorted(_VALID_VISIBILITIES))}"
+    return None
 
 
 @mcp.tool()
@@ -30,6 +39,10 @@ def schedule_post(
     when the scheduled time arrives. Run the daemon with `linkedin-mcp-scheduler-daemon`.
     """
     try:
+        vis_err = _validate_visibility(visibility)
+        if vis_err:
+            return json.dumps({"error": True, "message": vis_err})
+
         scheduled_dt = _parse_iso_time(scheduled_time)
         if scheduled_dt <= datetime.now(timezone.utc):
             return json.dumps({"error": True, "message": "scheduled_time must be in the future"})
@@ -117,6 +130,11 @@ def update_scheduled_post(
 ) -> str:
     """Edit fields of a pending scheduled post in-place. Only provided fields are updated."""
     try:
+        if visibility is not None:
+            vis_err = _validate_visibility(visibility)
+            if vis_err:
+                return json.dumps({"error": True, "message": vis_err})
+
         db = get_db()
         result = db.update(
             post_id,

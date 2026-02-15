@@ -9,7 +9,7 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 from linkedin_sdk import LinkedInClient
 
-from .token_storage import get_credentials
+from .token_storage import build_linkedin_client
 
 mcp = FastMCP("linkedin-scheduler")
 
@@ -27,14 +27,7 @@ def get_client() -> LinkedInClient:
     """
     global _client
     if _client is None:
-        creds = get_credentials()
-        if creds:
-            _client = LinkedInClient(
-                access_token=creds.get("accessToken"),
-                person_id=creds.get("personId"),
-            )
-        else:
-            _client = LinkedInClient()
+        _client = build_linkedin_client()
     return _client
 
 

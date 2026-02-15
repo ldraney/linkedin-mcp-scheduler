@@ -50,6 +50,18 @@ class TestSchedulePost:
         result = json.loads(schedule_post("Check it", FUTURE_TIME, url="https://example.com"))
         assert "postId" in result
 
+    def test_schedule_rejects_invalid_visibility(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post
+        result = json.loads(schedule_post("Hello!", FUTURE_TIME, visibility="TYPO"))
+        assert result["error"] is True
+        assert "Invalid visibility" in result["message"]
+
+    def test_schedule_accepts_valid_visibilities(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post
+        for vis in ["PUBLIC", "CONNECTIONS", "LOGGED_IN", "CONTAINER"]:
+            result = json.loads(schedule_post(f"Post {vis}", FUTURE_TIME, visibility=vis))
+            assert "postId" in result, f"Failed for visibility={vis}"
+
 
 class TestListScheduledPosts:
     def test_list_returns_valid_json(self):
@@ -111,6 +123,13 @@ class TestUpdateScheduledPost:
         from linkedin_mcp_scheduler.tools.scheduling import update_scheduled_post
         result = json.loads(update_scheduled_post("nonexistent", commentary="Nope"))
         assert result["error"] is True
+
+    def test_update_rejects_invalid_visibility(self):
+        from linkedin_mcp_scheduler.tools.scheduling import schedule_post, update_scheduled_post
+        created = json.loads(schedule_post("Post", FUTURE_TIME))
+        result = json.loads(update_scheduled_post(created["postId"], visibility="INVALID"))
+        assert result["error"] is True
+        assert "Invalid visibility" in result["message"]
 
 
 class TestReschedulePost:

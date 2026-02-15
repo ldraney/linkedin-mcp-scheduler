@@ -30,7 +30,7 @@ def mock_client():
     client = MagicMock()
     client.create_post.return_value = {"postUrn": "urn:li:share:111"}
     client.create_post_with_link.return_value = {"postUrn": "urn:li:share:222"}
-    with patch("linkedin_mcp_scheduler.daemon._get_client", return_value=client):
+    with patch("linkedin_mcp_scheduler.daemon._build_client", return_value=client):
         yield client
 
 
