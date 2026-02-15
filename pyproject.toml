@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linkedin-mcp-scheduler"
+version = "0.1.0"
+description = "Standalone MCP server for LinkedIn post scheduling with a publisher daemon"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "mcp>=1.0",
+    "ldraney-linkedin-sdk>=0.1.0",
+    "keyring>=25.0",
+]
+
+[project.scripts]
+linkedin-mcp-scheduler = "linkedin_mcp_scheduler.server:main"
+linkedin-mcp-scheduler-daemon = "linkedin_mcp_scheduler.daemon:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
