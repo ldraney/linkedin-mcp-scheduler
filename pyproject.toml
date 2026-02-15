@@ -3,18 +3,25 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "linkedin-mcp-scheduler"
+name = "linkedin-mcp-scheduler-ldraney"
 version = "0.1.0"
 description = "Standalone MCP server for LinkedIn post scheduling with a publisher daemon"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
+authors = [
+    {name = "Lucas Draney", email = "107153866+ldraney@users.noreply.github.com"},
+]
 dependencies = [
     "mcp>=1.0",
     "ldraney-linkedin-sdk>=0.1.0",
     "keyring>=25.0",
     "httpx>=0.24",
 ]
+
+[project.urls]
+Repository = "https://github.com/ldraney/linkedin-mcp-scheduler"
+Issues = "https://github.com/ldraney/linkedin-mcp-scheduler/issues"
 
 [project.scripts]
 linkedin-mcp-scheduler = "linkedin_mcp_scheduler.server:main"
