@@ -1,3 +1,7 @@
+[![PyPI](https://img.shields.io/pypi/v/linkedin-mcp-scheduler-ldraney)](https://pypi.org/project/linkedin-mcp-scheduler-ldraney/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
 # linkedin-mcp-scheduler
 
 Schedule and manage LinkedIn posts through conversation with an AI agent. Posts publish reliably on time — locally or in a container.
