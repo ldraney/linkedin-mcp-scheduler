@@ -13,6 +13,10 @@ from .token_storage import build_linkedin_client
 
 mcp = FastMCP("linkedin-scheduler")
 
+# claude.ai requires persistent sessions — stateless mode creates sessions
+# with ID None that terminate immediately, causing infinite reconnect loops.
+mcp.settings.stateless_http = False
+
 # ---------------------------------------------------------------------------
 # Shared client instance
 # ---------------------------------------------------------------------------
